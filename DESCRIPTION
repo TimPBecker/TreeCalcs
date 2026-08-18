@@ -1,0 +1,21 @@
+Package: TreeCalcs
+Type: Package
+Title: Fast Tree Permutations, Traversals, and Aggregations in C++20
+Version: 0.1.0
+Authors@R: person("Tim Becker", role = c("aut", "cre"), email = "tim@the-beckers.net")
+Description: Efficient tree algorithms powered by C++20 concepts and Rcpp,
+    including tree permutation, propagation, folding, leaf traversal, and
+    hierarchical tree-structured Shapley values (cShapley) implementing the
+    methodology of Li, Naldi, Nisen, and Shi (2016) "Organising the allocation".
+    Supports native data.tree Node objects and standard nested R lists.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Imports:
+    Rcpp (>= 1.0.0)
+Suggests:
+    data.tree,
+    testthat (>= 3.0.0)
+LinkingTo: 
+    Rcpp
+SystemRequirements: C++20
+Config/roxygen2/version: 8.1.0

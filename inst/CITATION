@@ -1,0 +1,24 @@
+citHeader("To cite TreeCalcs or the underlying hierarchical cShapley methodology in publications, please cite:")
+
+citEntry(
+  entry = "article",
+  title = "Organising the allocation",
+  author = c(
+    person("Yadong", "Li"),
+    person("Marco", "Naldi"),
+    person("Jeffrey", "Nisen"),
+    person("Yixi", "Shi")
+  ),
+  journal = "Risk",
+  year = "2016",
+  textVersion = "Li, Y., Naldi, M., Nisen, J., & Shi, Y. (2016). Organising the allocation. Risk."
+)
+
+citEntry(
+  entry = "manual",
+  title = "TreeCalcs: Fast Tree Permutations, Traversals, and Aggregations in C++20",
+  author = person("Tim"),
+  year = "2026",
+  note = "R package version 0.1.0",
+  textVersion = "Tim (2026). TreeCalcs: Fast Tree Permutations, Traversals, and Aggregations in C++20. R package version 0.1.0."
+)

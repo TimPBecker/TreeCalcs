@@ -1,0 +1,10 @@
+# Binaries and build artifacts
+*.o
+*.so
+*.dll
+src/*.o
+src/*.so
+src/*.dll
+.Rproj.user
+.Rhistory
+.RData
