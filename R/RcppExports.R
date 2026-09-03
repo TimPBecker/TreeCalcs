@@ -67,3 +67,15 @@ cpp_cshapley <- function(tree_list, calc_func) {
     .Call(`_TreeCalcs_cpp_cshapley`, tree_list, calc_func)
 }
 
+#' Compute hierarchical cShapley values for tree leaves via Monte Carlo sampling
+#' 
+#' @param tree_list A nested list representing the tree hierarchy.
+#' @param calc_func An R function taking a DataFrame of leaves with columns 'key' and 'value'.
+#' @param n_samples Number of Monte Carlo permutation samples.
+#' @param seed Optional random seed.
+#' @return A named numeric vector of Shapley values for each leaf.
+#' @export
+cpp_cshapley_mc <- function(tree_list, calc_func, n_samples, seed = NULL) {
+    .Call(`_TreeCalcs_cpp_cshapley_mc`, tree_list, calc_func, n_samples, seed)
+}
+

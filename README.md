@@ -10,6 +10,7 @@ An R package providing high-performance tree algorithms powered by C++20 concept
 - **Tree Propagation**: Computes internal node values recursively from leaf values (`propagate_tree`).
 - **Tree Folding / Reduction**: Reduces tree values into scalar aggregations (`fold_tree`).
 - **Hierarchical cShapley**: Fast tree-structured Shapley values with memoization (`cshapley`).
+- **Monte Carlo cShapley (`cShapleyMC`)**: Scalable Monte Carlo simulation for large trees using random tree permutations with memoization.
 - **Dual Representation**: Supports standard nested R lists as well as seamless conversion with `data.tree` objects.
 
 ## Installation

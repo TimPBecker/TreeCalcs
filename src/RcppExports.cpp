@@ -79,6 +79,20 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// cpp_cshapley_mc
+Rcpp::NumericVector cpp_cshapley_mc(Rcpp::List tree_list, Rcpp::Function calc_func, int n_samples, Rcpp::Nullable<double> seed);
+RcppExport SEXP _TreeCalcs_cpp_cshapley_mc(SEXP tree_listSEXP, SEXP calc_funcSEXP, SEXP n_samplesSEXP, SEXP seedSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< Rcpp::List >::type tree_list(tree_listSEXP);
+    Rcpp::traits::input_parameter< Rcpp::Function >::type calc_func(calc_funcSEXP);
+    Rcpp::traits::input_parameter< int >::type n_samples(n_samplesSEXP);
+    Rcpp::traits::input_parameter< Rcpp::Nullable<double> >::type seed(seedSEXP);
+    rcpp_result_gen = Rcpp::wrap(cpp_cshapley_mc(tree_list, calc_func, n_samples, seed));
+    return rcpp_result_gen;
+END_RCPP
+}
 
 static const R_CallMethodDef CallEntries[] = {
     {"_TreeCalcs_cpp_permute_tree", (DL_FUNC) &_TreeCalcs_cpp_permute_tree, 1},
@@ -87,6 +101,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_TreeCalcs_cpp_fold_tree", (DL_FUNC) &_TreeCalcs_cpp_fold_tree, 2},
     {"_TreeCalcs_cpp_tree_to_string", (DL_FUNC) &_TreeCalcs_cpp_tree_to_string, 1},
     {"_TreeCalcs_cpp_cshapley", (DL_FUNC) &_TreeCalcs_cpp_cshapley, 2},
+    {"_TreeCalcs_cpp_cshapley_mc", (DL_FUNC) &_TreeCalcs_cpp_cshapley_mc, 4},
     {NULL, NULL, 0}
 };
 
