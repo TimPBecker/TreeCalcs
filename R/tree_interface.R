@@ -222,3 +222,80 @@ cshapley <- function(tree, calc_func = "sum") {
   cpp_cshapley(l, calc_func)
 }
 
+#' Compute hierarchical tree-structured Shapley values via Monte Carlo simulation (cShapleyMC)
+#'
+#' Estimates hierarchical Shapley values of all leaf nodes by sampling random
+#' tree permutations rather than enumerating all permutations.
+#'
+#' @param tree A `data.tree` Node or nested tree list.
+#' @param calc_func A function that accepts a data.frame with columns `key` and `value`
+#'   representing a coalition of leaf nodes, and returns a single numeric value.
+#'   Alternatively, a character string specifying `"sum"`, `"prod"`, `"mean"`, `"max"`, or `"min"`.
+#' @param n_samples Positive integer specifying the number of Monte Carlo permutation samples. Default is 1000.
+#' @param seed Optional numeric seed for reproducible random sampling. Default is NULL.
+#' @param ... Additional optional arguments (such as aliases `samples` or `nSamples`).
+#' @return A named numeric vector of Shapley values for each leaf node.
+#' @references
+#' Li, Y., Naldi, M., Nisen, J., & Shi, Y. (2016). Organising the allocation. *Risk*, March 2016.
+#' @examples
+#' root <- tree_node("root_node", list(
+#'   tree_node("group1", list(tree_leaf("a", 8), tree_leaf("b", 2))),
+#'   tree_node("group2", list(tree_leaf("c", 5), tree_leaf("d", 1)))
+#' ))
+#' # Monte Carlo estimation with linear value function:
+#' cShapleyMC(root, "sum", n_samples = 100, seed = 42)
+#'
+#' # Non-linear custom value function:
+#' cShapleyMC(root, function(df) sum(df$value)^2, n_samples = 500, seed = 42)
+#' @export
+cShapleyMC <- function(tree, calc_func = "sum", n_samples = 1000, seed = NULL, ...) {
+  dots <- list(...)
+  if (missing(n_samples)) {
+    if (!is.null(dots$samples)) n_samples <- dots$samples
+    else if (!is.null(dots$nSamples)) n_samples <- dots$nSamples
+    else if (!is.null(dots$n_samples)) n_samples <- dots$n_samples
+  }
+  if (missing(seed)) {
+    if (!is.null(dots$seed)) seed <- dots$seed
+  }
+
+  if (is.numeric(calc_func) && missing(n_samples)) {
+    n_samples <- calc_func
+    calc_func <- "sum"
+  }
+
+  if (!is.numeric(n_samples) || length(n_samples) != 1 || is.na(n_samples) || n_samples < 1) {
+    stop("n_samples must be a positive integer.")
+  }
+  n_samples <- as.integer(n_samples)
+
+  if (!is.null(seed)) {
+    if (!is.numeric(seed) || length(seed) != 1 || is.na(seed)) {
+      stop("seed must be a single numeric value or NULL.")
+    }
+  }
+
+  if (is.character(calc_func)) {
+    op <- match.arg(calc_func, c("sum", "prod", "mean", "max", "min"))
+    calc_func <- switch(op,
+      "sum" = function(df) if (nrow(df) == 0) 0 else sum(df$value),
+      "prod" = function(df) if (nrow(df) == 0) 1 else prod(df$value),
+      "mean" = function(df) if (nrow(df) == 0) 0 else mean(df$value),
+      "max" = function(df) if (nrow(df) == 0) 0 else max(df$value),
+      "min" = function(df) if (nrow(df) == 0) 0 else min(df$value)
+    )
+  }
+
+  if (!is.function(calc_func)) {
+    stop("calc_func must be an R function or one of 'sum', 'prod', 'mean', 'max', 'min'.")
+  }
+
+  l <- to_tree_list(tree)
+  cpp_cshapley_mc(l, calc_func, n_samples, seed)
+}
+
+#' @rdname cShapleyMC
+#' @export
+cshapleyMC <- cShapleyMC
+
+

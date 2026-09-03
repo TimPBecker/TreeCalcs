@@ -297,3 +297,61 @@ Rcpp::NumericVector cpp_cshapley(Rcpp::List tree_list, Rcpp::Function calc_func)
     return out;
 }
 
+//' Compute hierarchical cShapley values for tree leaves via Monte Carlo sampling
+//' 
+//' @param tree_list A nested list representing the tree hierarchy.
+//' @param calc_func An R function taking a DataFrame of leaves with columns 'key' and 'value'.
+//' @param n_samples Number of Monte Carlo permutation samples.
+//' @param seed Optional random seed.
+//' @return A named numeric vector of Shapley values for each leaf.
+//' @export
+// [[Rcpp::export]]
+Rcpp::NumericVector cpp_cshapley_mc(Rcpp::List tree_list, Rcpp::Function calc_func, int n_samples, Rcpp::Nullable<double> seed = R_NilValue) {
+    if (n_samples <= 0) {
+        Rcpp::stop("n_samples must be a positive integer.");
+    }
+    auto cpp_root = r_list_to_cpp_tree(tree_list);
+    
+    auto cpp_calc = [&](const std::vector<std::shared_ptr<LeafNode<KeyType, ValType>>>& leafSet) -> double {
+        std::vector<std::string> keys;
+        std::vector<double> values;
+        keys.reserve(leafSet.size());
+        values.reserve(leafSet.size());
+        for (const auto& l : leafSet) {
+            keys.push_back(l->key);
+            values.push_back(l->value);
+        }
+        
+        Rcpp::DataFrame df = Rcpp::DataFrame::create(
+            Rcpp::Named("key") = keys,
+            Rcpp::Named("value") = values,
+            Rcpp::Named("stringsAsFactors") = false
+        );
+        
+        SEXP res = calc_func(df);
+        return Rcpp::as<double>(res);
+    };
+    
+    std::optional<uint64_t> cpp_seed = std::nullopt;
+    if (seed.isNotNull()) {
+        cpp_seed = static_cast<uint64_t>(Rcpp::as<double>(seed));
+    } else {
+        Rcpp::RNGScope scope;
+        double r_unif = R::unif_rand();
+        cpp_seed = static_cast<uint64_t>(r_unif * 9007199254740991.0);
+    }
+    
+    auto shapleyMap = cShapleyMC<KeyType, ValType>(cpp_root, cpp_calc, static_cast<size_t>(n_samples), cpp_seed);
+    
+    Rcpp::NumericVector out(shapleyMap.size());
+    Rcpp::CharacterVector names(shapleyMap.size());
+    size_t idx = 0;
+    for (const auto& [k, v] : shapleyMap) {
+        out[idx] = v;
+        names[idx] = k;
+        idx++;
+    }
+    out.attr("names") = names;
+    return out;
+}
+

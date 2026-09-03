@@ -14,6 +14,7 @@
 #include <unordered_map>
 #include <cstdint>
 #include <numeric>
+#include <random>
 
 template <typename K>
 concept TreeKey = std::totally_ordered<K>;
@@ -332,6 +333,42 @@ std::vector<std::vector<std::shared_ptr<LeafNode<K, V>>>> getLeafPermutations(co
     return result;
 }
 
+// --- HELPER: SAMPLE A SINGLE LEAF PERMUTATION UNIFORMLY AT RANDOM ---
+template <TreeKey K, TreeValue V, typename RNG>
+void _sampleLeafPermutation(
+    const std::shared_ptr<Node<K, V>>& node,
+    std::vector<std::shared_ptr<LeafNode<K, V>>>& outLeaves,
+    RNG& rng)
+{
+    if (!node) return;
+
+    if (auto leaf = std::dynamic_pointer_cast<LeafNode<K, V>>(node)) {
+        outLeaves.push_back(leaf);
+        return;
+    }
+
+    auto internal = std::dynamic_pointer_cast<InternalNode<K, V>>(node);
+    if (!internal || internal->children.empty()) return;
+
+    std::vector<size_t> order(internal->children.size());
+    std::iota(order.begin(), order.end(), 0);
+    std::shuffle(order.begin(), order.end(), rng);
+
+    for (size_t idx : order) {
+        _sampleLeafPermutation(internal->children[idx], outLeaves, rng);
+    }
+}
+
+template <TreeKey K, TreeValue V, typename RNG>
+std::vector<std::shared_ptr<LeafNode<K, V>>> sampleLeafPermutation(
+    const std::shared_ptr<Node<K, V>>& node,
+    RNG& rng)
+{
+    std::vector<std::shared_ptr<LeafNode<K, V>>> leaves;
+    _sampleLeafPermutation(node, leaves, rng);
+    return leaves;
+}
+
 // --- CSHAPLEY: HIERARCHICAL TREE-STRUCTURED SHAPLEY VALUES (WITH MEMOIZATION) ---
 // Based on: Li, Y., Naldi, M., Nisen, J., & Shi, Y. (2016). Organising the allocation. Risk.
 template <TreeKey K, TreeValue V, typename CalcFunc>
@@ -449,8 +486,150 @@ std::map<K, double> cShapley(const std::shared_ptr<Node<K, V>>& root, CalcFunc c
 
     // Average marginal contributions across all permutations
     double numPermutations = static_cast<double>(allLeafPerms.size());
-    for (auto& [key, val] : shapleyValues) {
-        val /= numPermutations;
+    for (auto& entry : shapleyValues) {
+        entry.second /= numPermutations;
+    }
+
+    return shapleyValues;
+}
+
+// --- CSHAPLEYMC: MONTE CARLO SIMULATION OF HIERARCHICAL SHAPLEY VALUES ---
+template <TreeKey K, TreeValue V, typename CalcFunc>
+requires std::invocable<CalcFunc, const std::vector<std::shared_ptr<LeafNode<K, V>>>&> &&
+         std::convertible_to<std::invoke_result_t<CalcFunc, const std::vector<std::shared_ptr<LeafNode<K, V>>>&>, double>
+std::map<K, double> cShapleyMC(
+    const std::shared_ptr<Node<K, V>>& root,
+    CalcFunc calcFunc,
+    size_t nSamples,
+    std::optional<uint64_t> seed = std::nullopt)
+{
+    std::map<K, double> shapleyValues;
+    if (!root || nSamples == 0) return shapleyValues;
+
+    // Base case: root is a single LeafNode
+    if (auto singleLeaf = std::dynamic_pointer_cast<LeafNode<K, V>>(root)) {
+        std::vector<std::shared_ptr<LeafNode<K, V>>> emptySet;
+        std::vector<std::shared_ptr<LeafNode<K, V>>> fullSet = {singleLeaf};
+        double v0 = static_cast<double>(calcFunc(emptySet));
+        double v1 = static_cast<double>(calcFunc(fullSet));
+        shapleyValues[singleLeaf->key] = v1 - v0;
+        return shapleyValues;
+    }
+
+    // Root is an InternalNode
+    auto internal = std::dynamic_pointer_cast<InternalNode<K, V>>(root);
+    if (!internal) return shapleyValues;
+
+    // Extract unique leaves from root and assign each a canonical index
+    auto initialLeaves = getLeafNodes(root);
+    if (initialLeaves.empty()) return shapleyValues;
+
+    std::map<K, size_t> keyToIndex;
+    for (size_t i = 0; i < initialLeaves.size(); ++i) {
+        keyToIndex[initialLeaves[i]->key] = i;
+        shapleyValues[initialLeaves[i]->key] = 0.0;
+    }
+
+    size_t nLeaves = initialLeaves.size();
+
+    // Initialize RNG with seed or random device
+    std::mt19937_64 rng;
+    if (seed.has_value()) {
+        rng.seed(seed.value());
+    } else {
+        std::random_device rd;
+        rng.seed((static_cast<uint64_t>(rd()) << 32) | rd());
+    }
+
+    std::vector<std::shared_ptr<LeafNode<K, V>>> leaves;
+    leaves.reserve(nLeaves);
+
+    // Memoized coalition evaluation:
+    if (nLeaves <= 64) {
+        // High-speed O(1) bitmask cache
+        std::unordered_map<uint64_t, double> memoCache;
+
+        auto getCoalitionValue = [&](uint64_t mask, const std::vector<std::shared_ptr<LeafNode<K, V>>>& coalition) -> double {
+            auto it = memoCache.find(mask);
+            if (it != memoCache.end()) {
+                return it->second;
+            }
+            double val = static_cast<double>(calcFunc(coalition));
+            memoCache[mask] = val;
+            return val;
+        };
+
+        // Pre-evaluate empty coalition
+        std::vector<std::shared_ptr<LeafNode<K, V>>> emptySet;
+        getCoalitionValue(0ULL, emptySet);
+
+        // Evaluate marginal contributions across Monte Carlo sampled leaf permutations
+        for (size_t s = 0; s < nSamples; ++s) {
+            leaves.clear();
+            _sampleLeafPermutation(root, leaves, rng);
+
+            std::vector<std::shared_ptr<LeafNode<K, V>>> currentCoalition;
+            currentCoalition.reserve(leaves.size());
+
+            uint64_t currentMask = 0ULL;
+            double prevVal = getCoalitionValue(currentMask, currentCoalition);
+
+            for (const auto& leaf : leaves) {
+                size_t leafIdx = keyToIndex[leaf->key];
+                currentMask |= (1ULL << leafIdx);
+                currentCoalition.push_back(leaf);
+
+                double currentVal = getCoalitionValue(currentMask, currentCoalition);
+                double marginal = currentVal - prevVal;
+                shapleyValues[leaf->key] += marginal;
+                prevVal = currentVal;
+            }
+        }
+    } else {
+        // String bitmask cache for trees with > 64 leaves
+        std::unordered_map<std::string, double> memoCache;
+
+        auto getCoalitionValue = [&](const std::string& mask, const std::vector<std::shared_ptr<LeafNode<K, V>>>& coalition) -> double {
+            auto it = memoCache.find(mask);
+            if (it != memoCache.end()) {
+                return it->second;
+            }
+            double val = static_cast<double>(calcFunc(coalition));
+            memoCache[mask] = val;
+            return val;
+        };
+
+        std::string emptyMask(nLeaves, '0');
+        std::vector<std::shared_ptr<LeafNode<K, V>>> emptySet;
+        getCoalitionValue(emptyMask, emptySet);
+
+        for (size_t s = 0; s < nSamples; ++s) {
+            leaves.clear();
+            _sampleLeafPermutation(root, leaves, rng);
+
+            std::vector<std::shared_ptr<LeafNode<K, V>>> currentCoalition;
+            currentCoalition.reserve(leaves.size());
+
+            std::string currentMask(nLeaves, '0');
+            double prevVal = getCoalitionValue(currentMask, currentCoalition);
+
+            for (const auto& leaf : leaves) {
+                size_t leafIdx = keyToIndex[leaf->key];
+                currentMask[leafIdx] = '1';
+                currentCoalition.push_back(leaf);
+
+                double currentVal = getCoalitionValue(currentMask, currentCoalition);
+                double marginal = currentVal - prevVal;
+                shapleyValues[leaf->key] += marginal;
+                prevVal = currentVal;
+            }
+        }
+    }
+
+    // Average marginal contributions across all sampled permutations
+    double numSamples = static_cast<double>(nSamples);
+    for (auto& entry : shapleyValues) {
+        entry.second /= numSamples;
     }
 
     return shapleyValues;
@@ -482,9 +661,27 @@ std::string treeToString(const std::shared_ptr<InternalNode<K, V>>& node) {
     return treeToString(std::static_pointer_cast<Node<K, V>>(node));
 }
 
+template <TreeKey K, TreeValue V, typename RNG>
+std::vector<std::shared_ptr<LeafNode<K, V>>> sampleLeafPermutation(
+    const std::shared_ptr<InternalNode<K, V>>& node,
+    RNG& rng)
+{
+    return sampleLeafPermutation(std::static_pointer_cast<Node<K, V>>(node), rng);
+}
+
 template <TreeKey K, TreeValue V, typename CalcFunc>
 auto cShapley(const std::shared_ptr<InternalNode<K, V>>& root, CalcFunc calcFunc) {
     return cShapley(std::static_pointer_cast<Node<K, V>>(root), calcFunc);
+}
+
+template <TreeKey K, TreeValue V, typename CalcFunc>
+auto cShapleyMC(
+    const std::shared_ptr<InternalNode<K, V>>& root,
+    CalcFunc calcFunc,
+    size_t nSamples,
+    std::optional<uint64_t> seed = std::nullopt)
+{
+    return cShapleyMC(std::static_pointer_cast<Node<K, V>>(root), calcFunc, nSamples, seed);
 }
 
 
